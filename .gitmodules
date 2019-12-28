@@ -1,3 +1,3 @@
 [submodule "MPL/MPL_sim"]
 	path = MPL/MPL_sim
-	url = git@github.com:vikashplus/MPL_sim.git
+	url =  https://github.com/vikashplus/MPL_sim.git
