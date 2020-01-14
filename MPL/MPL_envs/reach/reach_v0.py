@@ -101,21 +101,19 @@ class sallyReachEnv(mujoco_env.MujocoEnv, utils.EzPickle):
     # --------------------------------
     # get and set states
     # --------------------------------
-
-    # def get_env_state(self):
+    def get_env_state(self):
         return dict(qp=self.data.qpos.copy(), qv=self.data.qvel.copy())
 
-    # def set_env_state(self, state):
-    #     self.sim.reset()
-    #     qp = state['qp'].copy()
-    #     qv = state['qv'].copy()
-    #     self.set_state(qp, qv)
-    #     self.sim.forward()
+    def set_env_state(self, state):
+        self.sim.reset()
+        qp = state['qp'].copy()
+        qv = state['qv'].copy()
+        self.set_state(qp, qv)
+        self.sim.forward()
 
     # --------------------------------
     # utility functions
     # --------------------------------
-
     def get_env_infos(self):
         return dict(state=self.get_env_state())
 
