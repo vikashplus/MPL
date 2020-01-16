@@ -15,7 +15,7 @@ class sallyReachEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         self.left_target = 0
         self.right_grasp = 0
         self.left_grasp = 0
-        mujoco_env.MujocoEnv.__init__(self, curr_dir+'/reach-v0.xml', 20)
+        mujoco_env.MujocoEnv.__init__(self, curr_dir+'/reach_v0.xml', 20)
         self.right_target = self.sim.model.site_name2id('right_target')
         self.left_target = self.sim.model.site_name2id('left_target')
         self.right_grasp = self.sim.model.site_name2id('right_grasp')
