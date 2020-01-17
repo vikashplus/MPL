@@ -27,8 +27,8 @@ for the specific language governing permissions and limitations under the Licens
     <compiler meshdir="./../../MPL_sim/" texturedir='./../../MPL_sim/scenes/'/>
 
     <worldbody>
-        <site name="left_target" type="sphere" size=".05" rgba="0 1 .2 .5" pos="0 0 .075"/>
-        <site name="right_target" type="sphere" size=".05" rgba=".2 1 0 .5" pos="0 0 .075"/>
+        <site name="Ltarget" type="sphere" size=".05" rgba="0 1 .2 .5" pos="0 0 .075"/>
+        <site name="Rtarget" type="sphere" size=".05" rgba=".2 1 0 .5" pos="0 0 .075"/>
         <include file='./../../MPL_sim/assets/arms_chain.xml'/> <!-- hands are configures here -->
     </worldbody>
 

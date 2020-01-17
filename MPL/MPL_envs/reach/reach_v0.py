@@ -2,28 +2,41 @@ import numpy as np
 from gym import utils
 from mjrl.envs import mujoco_env
 from mujoco_py import MjViewer
+from MPL.MPL_robot.robot import Robot
 import os
 
+# TODO: Action normalization is missing
 
 class sallyReachEnv(mujoco_env.MujocoEnv, utils.EzPickle):
-    def __init__(self):
+    def __init__(self, noise_scale=0.0):
+
+        # prep
         utils.EzPickle.__init__(self)
+        self._noise_scale = noise_scale
         self.initializing = True
         curr_dir = os.path.dirname(os.path.abspath(__file__))
+        self.Rtarget = 0
+        self.Ltarget = 0
+        self.Rgrasp = 0
+        self.Lgrasp = 0
+        
+        # acquire robot
+        self.mpl = Robot(name='sallyReach', model_file=curr_dir+'/reach_v0.xml', config_file=curr_dir+'/reach_v0.config')
 
-        self.right_target = 0
-        self.left_target = 0
-        self.right_grasp = 0
-        self.left_grasp = 0
+        # acquire env
         mujoco_env.MujocoEnv.__init__(self, curr_dir+'/reach_v0.xml', 20)
-        self.right_target = self.sim.model.site_name2id('right_target')
-        self.left_target = self.sim.model.site_name2id('left_target')
-        self.right_grasp = self.sim.model.site_name2id('right_grasp')
-        self.left_grasp = self.sim.model.site_name2id('left_grasp')
+        self.Rtarget = self.sim.model.site_name2id('Rtarget')
+        self.Ltarget = self.sim.model.site_name2id('Ltarget')
+        self.Rgrasp = self.sim.model.site_name2id('Rgrasp')
+        self.Lgrasp = self.sim.model.site_name2id('Lgrasp')
+        
+        # env ready
         self.initializing = False
 
+
     def step(self, a):
-        self.do_simulation(a, self.frame_skip)
+
+        self.mpl.step(self, a, self.frame_skip*self.sim.model.opt.timestep)
         obs = self.get_obs()
 
         score, reward_dict, solved, done = self._get_score_reward_solved_done(self.obs_dict)
@@ -38,40 +51,64 @@ class sallyReachEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         }
         return obs, reward_dict['total'], done, env_info
 
+
+    # query robot and populate observations
     def get_obs(self):
+
+        # ask robot for sensor data
+        sen = self.mpl.get_sensors(self, noise_scale=self._noise_scale)
+
+        # parse sensor data into obs dict
         self.obs_dict = {}
-        self.obs_dict['t'] = self.sim.data.time
-        self.obs_dict['qp'] = self.sim.data.qpos.copy()
-        self.obs_dict['qv'] = self.sim.data.qvel.copy()
-        self.obs_dict['right_err'] = self.sim.data.site_xpos[self.right_target]-self.sim.data.site_xpos[self.right_grasp]
-        self.obs_dict['left_err'] = self.sim.data.site_xpos[self.left_target]-self.sim.data.site_xpos[self.left_grasp]
+        self.obs_dict['t'] = sen['time']
+        self.obs_dict['Tmpl_pos'] = sen['Tmpl_pos']
+        self.obs_dict['Rmpl_pos'] = sen['Rmpl_pos']
+        self.obs_dict['Lmpl_pos'] = sen['Lmpl_pos']
+        self.obs_dict['Tmpl_vel'] = sen['Tmpl_vel']
+        self.obs_dict['Rmpl_vel'] = sen['Rmpl_vel']
+        self.obs_dict['Lmpl_vel'] = sen['Lmpl_vel']
+        self.obs_dict['Rerr'] = self.sim.data.site_xpos[self.Rtarget]-self.sim.data.site_xpos[self.Rgrasp]
+        self.obs_dict['Lerr'] = self.sim.data.site_xpos[self.Ltarget]-self.sim.data.site_xpos[self.Lgrasp]
 
+        # vectorize observations
         return np.concatenate([
-            self.obs_dict['qp'],
-            self.obs_dict['qv'],
-            self.obs_dict['left_err'],
-            self.obs_dict['right_err']])
+            self.obs_dict['Tmpl_pos'],
+            self.obs_dict['Rmpl_pos'],
+            self.obs_dict['Lmpl_pos'],
+            self.obs_dict['Tmpl_vel'],
+            self.obs_dict['Rmpl_vel'],
+            self.obs_dict['Lmpl_vel'],
+            self.obs_dict['Lerr'],
+            self.obs_dict['Rerr']])
 
+
+    # evaluate observations
     def _get_score_reward_solved_done(self, obs, act=None):
-        left_dist = np.linalg.norm(obs['left_err'])
-        right_dist = np.linalg.norm(obs['right_err'])
+        Ldist = np.linalg.norm(obs['Lerr'])
+        Rdist = np.linalg.norm(obs['Rerr'])
 
-        # print(right_dist, left_dist)
-        done = (bool( left_dist > 1.0) or bool(right_dist>1.0)) \
+        # print(Rdist, Ldist)
+        done = (bool( Ldist > 1.0) or bool(Rdist>1.0)) \
             if not self.initializing else False
 
         reward_dict = {}
-        avg_dist = (left_dist+right_dist)/2.0
+        avg_dist = (Ldist+Rdist)/2.0
         score = -1.* avg_dist
         reward_dict["avg_dist"] = score
-        reward_dict["small_bonus"] = 2.0*(left_dist<.1) + 2.0*(right_dist<.1)
-        reward_dict["big_bonus"] = 2.0*(left_dist<.1) * 2.0*(right_dist<.1)
+        reward_dict["small_bonus"] = 2.0*(Ldist<.1) + 2.0*(Rdist<.1)
+        reward_dict["big_bonus"] = 2.0*(Ldist<.1) * 2.0*(Rdist<.1)
         reward_dict["total"] = reward_dict["avg_dist"] + reward_dict["small_bonus"] + reward_dict["big_bonus"] - 50.0 * int(done) 
         
         solved = bool(avg_dist<0.100)
         return score, reward_dict, solved, done
 
 
+    # reset model
+    def reset_model(self):
+        raise NotImplementedError # for child class to define 
+
+
+    # evaluate a path
     def compute_path_rewards(self, paths):
         # path has two keys: observations and actions
         # path["observations"] : (num_traj, horizon, obs_dim)
@@ -80,9 +117,8 @@ class sallyReachEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         score, rewards, done = self._get_score_reward_solved_done(obs)
         paths["rewards"] = rewards if rewards.shape[0] > 1 else rewards.ravel()
 
-    def reset_model(self):
-        raise NotImplementedError # for child class to define 
 
+    # evaluate policy's success from a collection of paths
     def evaluate_success(self, paths, logger=None):
         success = 0.0
         for p in paths:
@@ -129,25 +165,26 @@ class sallyReachEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         pass
 
 
+# Reach at fixed targets
 class sallyReachEnvFixed(sallyReachEnv):
     def __init__(self):
         super().__init__()
 
     def reset_model(self):
-        self.sim.model.site_pos[self.right_target] = np.array([0.15, 0.2, .6])
-        self.sim.model.site_pos[self.left_target] = np.array([-0.15, 0.2, .3])
+        self.sim.model.site_pos[self.Rtarget] = np.array([0.15, 0.2, .6])
+        self.sim.model.site_pos[self.Ltarget] = np.array([-0.15, 0.2, .3])
         self.set_state(self.init_qpos, self.init_qvel)
         self.sim.forward()
         return self.get_obs()
 
-
+# Reach at random targets
 class sallyReachEnvRandom(sallyReachEnv):
     def __init__(self):
         super().__init__()
 
     def reset_model(self):
-        self.sim.model.site_pos[self.right_target] = self.np_random.uniform(high=[0.5, .5, .6], low=[0, .1, .3])
-        self.sim.model.site_pos[self.left_target] = self.np_random.uniform(high=[0, .5, .6], low=[-.5, .1, .3])
+        self.sim.model.site_pos[self.Rtarget] = self.np_random.uniform(high=[0.5, .5, .6], low=[0, .1, .3])
+        self.sim.model.site_pos[self.Ltarget] = self.np_random.uniform(high=[0, .5, .6], low=[-.5, .1, .3])
         self.set_state(self.init_qpos, self.init_qvel)
         self.sim.forward()
         return self.get_obs()
